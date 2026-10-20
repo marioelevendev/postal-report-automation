@@ -1,0 +1,6 @@
+# Browser automation library used to control the installed Google Chrome.
+playwright==1.55.0
+
+# Loads POSTAL_USERNAME and POSTAL_PASSWORD from the local .env file.
+python-dotenv==1.1.1
+

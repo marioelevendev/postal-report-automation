@@ -1,0 +1,19 @@
+# Python virtual environments and generated cache files.
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local secrets must never be committed.
+.env
+
+# Generated report files are runtime output, not source code.
+downloads/*
+!downloads/.gitkeep
+
+# Failure and debug artifacts, if added during local troubleshooting.
+artifacts/
+
+# Local scheduler logs may contain operational details.
+logs/
+
