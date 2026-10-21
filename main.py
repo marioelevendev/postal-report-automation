@@ -1,8 +1,8 @@
 """Download the Postal Management project report with Playwright.
 
-The script intentionally keeps passwords out of the source code.  The username
-and password come from a local ``.env`` file, while the short-lived two-factor
-code is requested interactively every time the automation runs.
+The script intentionally keeps passwords out of the source code. The username
+and password come from a local ``.env`` file, while the script only submits a
+two-factor code that the website has already populated.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 from playwright.sync_api import (
     Browser,
     BrowserContext,
+    Locator,
     Page,
     Playwright,
     TimeoutError as PlaywrightTimeoutError,
@@ -288,15 +289,36 @@ def download_report(page: Page, download_directory: Path) -> Path:
     return output_path
 
 
+def click_with_overlay_fallback(locator: Locator, description: str) -> None:
+    """Click normally, but handle a persistent site notification overlay."""
+
+    try:
+        # A short timeout avoids waiting 30 seconds when a persistent toast is
+        # visibly covering the target in the upper-right corner.
+        locator.click(timeout=5_000)
+    except PlaywrightTimeoutError as error:
+        # Only bypass pointer targeting for the known overlay case. Other
+        # timeout causes still fail normally so page changes are not hidden.
+        if "intercepts pointer events" not in str(error):
+            raise
+
+        print(f"Notification overlay covered {description}; using DOM click.")
+        locator.evaluate("element => element.click()")
+
+
 def log_out(page: Page) -> None:
     """Open the user menu, confirm Logout in the modal, and verify sign-out."""
 
     # The icon-only user menu has no useful visible label, so this selector uses
     # the stable HTML classes shown in the verified page markup.
-    page.locator(
+    user_menu = page.locator(
         "a.nav-link[data-toggle='dropdown']:has(i.fa-user-circle)"
-    ).click()
-    page.get_by_role("link", name="Logout", exact=True).click()
+    )
+    click_with_overlay_fallback(user_menu, "the user menu")
+
+    logout_link = page.get_by_role("link", name="Logout", exact=True)
+    logout_link.wait_for(state="visible")
+    click_with_overlay_fallback(logout_link, "the Logout link")
 
     # Scope the final button lookup to the confirmation modal to avoid matching
     # the menu link that is also named Logout.
