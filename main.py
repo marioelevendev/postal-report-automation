@@ -18,7 +18,6 @@ from dotenv import load_dotenv
 from playwright.sync_api import (
     Browser,
     BrowserContext,
-    Locator,
     Page,
     Playwright,
     TimeoutError as PlaywrightTimeoutError,
@@ -289,36 +288,38 @@ def download_report(page: Page, download_directory: Path) -> Path:
     return output_path
 
 
-def click_with_overlay_fallback(locator: Locator, description: str) -> None:
-    """Click normally, but handle a persistent site notification overlay."""
+def dismiss_notification_toasts(page: Page) -> None:
+    """Remove completed toast messages that cover the user menu."""
 
-    try:
-        # A short timeout avoids waiting 30 seconds when a persistent toast is
-        # visibly covering the target in the upper-right corner.
-        locator.click(timeout=5_000)
-    except PlaywrightTimeoutError as error:
-        # Only bypass pointer targeting for the known overlay case. Other
-        # timeout causes still fail normally so page changes are not hidden.
-        if "intercepts pointer events" not in str(error):
-            raise
+    toast_containers = page.locator("#toastsContainerTopRight")
+    if toast_containers.count() == 0:
+        return
 
-        print(f"Notification overlay covered {description}; using DOM click.")
-        locator.evaluate("element => element.click()")
+    # The report-complete toast remains above the user icon and intercepts all
+    # pointer events. At this stage the report is already saved, so removing
+    # only this notification container is safe and leaves the page controls
+    # unchanged. Using evaluate_all also handles an accidental duplicate ID.
+    toast_containers.evaluate_all(
+        "containers => containers.forEach(container => container.remove())"
+    )
+    print("Dismissed the report notification before logout.")
 
 
 def log_out(page: Page) -> None:
     """Open the user menu, confirm Logout in the modal, and verify sign-out."""
+
+    dismiss_notification_toasts(page)
 
     # The icon-only user menu has no useful visible label, so this selector uses
     # the stable HTML classes shown in the verified page markup.
     user_menu = page.locator(
         "a.nav-link[data-toggle='dropdown']:has(i.fa-user-circle)"
     )
-    click_with_overlay_fallback(user_menu, "the user menu")
+    user_menu.click()
 
     logout_link = page.get_by_role("link", name="Logout", exact=True)
     logout_link.wait_for(state="visible")
-    click_with_overlay_fallback(logout_link, "the Logout link")
+    logout_link.click()
 
     # Scope the final button lookup to the confirmation modal to avoid matching
     # the menu link that is also named Logout.
