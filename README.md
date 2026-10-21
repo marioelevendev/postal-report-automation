@@ -284,6 +284,14 @@ During the run, expect Chrome to open and move through the login, filters,
 project selection, dispatch selection, download, and logout pages. A successful
 run prints the full path of the downloaded report.
 
+The saved filename starts with the run date in `DDMMYYYY` format, followed by
+an underscore and the filename supplied by the website. For example, a report
+downloaded on 21 October 2026 is saved as:
+
+```text
+21102026_Dispatches_New_1810141_1810139_1809553_1809558_1808917_More.csv.zip
+```
+
 For an on-demand run without showing Chrome:
 
 ```powershell
