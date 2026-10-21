@@ -267,8 +267,10 @@ def select_all_dispatches(page: Page) -> None:
     )
 
 
-def download_report(page: Page, download_directory: Path) -> Path:
-    """Download the generated ZIP file and return its final local path."""
+def download_report(
+    page: Page, download_directory: Path, report_date: date
+) -> Path:
+    """Download the ZIP with a DDMMYYYY prefix and return its local path."""
 
     download_directory.mkdir(parents=True, exist_ok=True)
 
@@ -279,7 +281,13 @@ def download_report(page: Page, download_directory: Path) -> Path:
         ).click()
 
     download = download_info.value
-    output_path = download_directory / download.suggested_filename
+
+    # Keep the filename supplied by the website, but add the run date first so
+    # reports are easy to sort and identify. Path.name also prevents a browser
+    # supplied path from escaping the configured download directory.
+    original_filename = Path(download.suggested_filename).name
+    dated_filename = f"{report_date:%d%m%Y}_{original_filename}"
+    output_path = download_directory / dated_filename
     download.save_as(output_path)
 
     if not output_path.is_file():
@@ -366,7 +374,9 @@ def run_automation(settings: Settings) -> Path:
             set_dates(page, from_date, to_date)
             select_requested_projects(page)
             select_all_dispatches(page)
-            report_path = download_report(page, settings.download_directory)
+            report_path = download_report(
+                page, settings.download_directory, settings.reference_date
+            )
 
             log_out(page)
             logged_out = True
