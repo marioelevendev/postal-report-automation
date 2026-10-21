@@ -227,7 +227,19 @@ def select_requested_projects(page: Page) -> None:
                 f"Expected one project row for {label!r}, found {match_count}."
             )
 
-        matching_row.get_by_role("checkbox").set_checked(True)
+        checkbox = matching_row.get_by_role("checkbox")
+
+        # The site renders a Bootstrap-style label on top of the real input.
+        # A normal Playwright click therefore waits for the input to receive
+        # pointer events and eventually times out. ``force=True`` keeps
+        # Playwright's checkbox semantics and final checked-state validation,
+        # while allowing this intentional custom-control overlay.
+        checkbox.set_checked(True, force=True)
+
+        # Keep an explicit guard here because selecting the wrong set of
+        # projects would produce an incorrect report.
+        if not checkbox.is_checked():
+            raise RuntimeError(f"Could not select project row for {label!r}.")
 
     # Submit the two checked project rows and wait for dispatch selection.
     with page.expect_navigation(wait_until="domcontentloaded"):
