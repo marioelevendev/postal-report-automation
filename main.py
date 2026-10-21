@@ -317,9 +317,20 @@ def log_out(page: Page) -> None:
     )
     user_menu.click()
 
-    logout_link = page.get_by_role("link", name="Logout", exact=True)
-    logout_link.wait_for(state="visible")
-    logout_link.click()
+    # Include the hidden link in the locator so we can recover if Bootstrap
+    # receives the menu click but does not visually open its dropdown.
+    logout_link = page.get_by_role(
+        "link", name="Logout", exact=True, include_hidden=True
+    )
+    try:
+        logout_link.wait_for(state="visible", timeout=5_000)
+        logout_link.click()
+    except PlaywrightTimeoutError:
+        print(
+            "The user dropdown did not open; activating its existing "
+            "Logout link directly."
+        )
+        logout_link.evaluate("element => element.click()")
 
     # Scope the final button lookup to the confirmation modal to avoid matching
     # the menu link that is also named Logout.
