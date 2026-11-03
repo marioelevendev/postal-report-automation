@@ -93,6 +93,11 @@ git --version
 Both commands should print a version. If either command is not recognized,
 install that program and open a new PowerShell window.
 
+Keep the Python version used to create `.venv` installed. A virtual
+environment contains links to its base Python installation; uninstalling that
+Python version breaks the environment even though `.venv\Scripts\python.exe`
+still exists.
+
 ### 2. Clone the project into the destination directory
 
 Create the parent directory, clone the GitHub repository, and enter the project:
@@ -584,6 +589,65 @@ Confirm the packages from PowerShell without depending on PyCharm:
 The command should display information for both packages and show their
 location under the project's `.venv\Lib\site-packages` directory.
 
+### Repair a broken PyCharm interpreter after Python was removed
+
+An error similar to the following means that the Python installation used to
+create `.venv` was removed or moved:
+
+```text
+No Python at 'C:\Users\...\Python312\python.exe'
+```
+
+This is different from a missing-package error. **Sync project** cannot repair
+it because the environment's Python interpreter itself no longer works.
+
+Close the PyCharm Settings dialog. In PowerShell, enter the project directory
+and deactivate the environment if the prompt starts with `(.venv)`:
+
+```powershell
+Set-Location "C:\Users\m.diles\Documents\ChatGPT\Python\postal_report_automation"
+deactivate
+```
+
+If `deactivate` is not recognized, the environment is not active and that
+line can be skipped. Preserve the broken generated environment temporarily:
+
+```powershell
+Rename-Item -LiteralPath ".venv" -NewName ".venv-python-old"
+```
+
+Then run the normal setup again. It uses the currently installed default Python
+and creates a new `.venv`:
+
+```powershell
+.\setup.ps1
+```
+
+Verify the repaired interpreter and dependencies:
+
+```powershell
+.\.venv\Scripts\python.exe --version
+.\.venv\Scripts\python.exe -m pip show playwright python-dotenv
+```
+
+Return to PyCharm, remove the invalid interpreter entry if it is still listed,
+and add this existing interpreter again:
+
+```text
+C:\Users\m.diles\Documents\ChatGPT\Python\postal_report_automation\.venv\Scripts\python.exe
+```
+
+After PyCharm accepts that interpreter, use **Sync project**. The private
+`.env`, downloads, logs, and source code are outside `.venv` and are not
+affected by rebuilding the virtual environment.
+
+Only after the new environment works, the temporary
+`.venv-python-old` directory may be deleted:
+
+```powershell
+Remove-Item -LiteralPath ".venv-python-old" -Recurse -Force
+```
+
 An optional PyCharm Run configuration can use:
 
 | Field | Value |
@@ -623,6 +687,7 @@ passed.
 | `Activate.ps1` cannot be loaded | Use the temporary `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` command shown above. |
 | `No module named playwright` | Activate `.venv` and run `python -m pip install -r requirements.txt`. |
 | PyCharm says requirements are not satisfied | Select the project's `.venv\Scripts\python.exe` interpreter, then use **Sync project**. |
+| PyCharm reports `No Python at ...\Python312\python.exe` | The base Python was removed. Rebuild `.venv` using the repair procedure above, then add the new interpreter to PyCharm. |
 | Playwright browser support is missing | Run `python -m playwright install`. |
 | Google Chrome cannot be found | Install or update Google Chrome. |
 | Username or password error | Check `POSTAL_USERNAME` and `POSTAL_PASSWORD` in the local `.env` file. |
