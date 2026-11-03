@@ -66,6 +66,184 @@ PowerShell says that `py` is not recognized, install Python from
 [python.org](https://www.python.org/downloads/windows/) and enable the option to
 add the Python launcher to Windows.
 
+## Deploy on another Windows computer
+
+The following numbered procedure installs the project in the example location:
+
+```text
+C:\AutomationProcess\ReportAutomation
+```
+
+### 1. Install the prerequisites
+
+Install these items on the destination computer:
+
+1. Python 3.10 or newer, including the Windows `py` launcher.
+2. Google Chrome.
+3. Git for Windows.
+4. PowerShell, which is already included with Windows 10 and Windows 11.
+
+Open PowerShell and verify Python and Git:
+
+```powershell
+py --version
+git --version
+```
+
+Both commands should print a version. If either command is not recognized,
+install that program and open a new PowerShell window.
+
+### 2. Clone the project into the destination directory
+
+Create the parent directory, clone the GitHub repository, and enter the project:
+
+```powershell
+New-Item -ItemType Directory -Path "C:\AutomationProcess" -Force
+git clone https://github.com/marioelevendev/postal-report-automation.git "C:\AutomationProcess\ReportAutomation"
+Set-Location "C:\AutomationProcess\ReportAutomation"
+```
+
+The `ReportAutomation` directory must not already contain unrelated files.
+Verify the location:
+
+```powershell
+Get-Location
+```
+
+Expected path:
+
+```text
+C:\AutomationProcess\ReportAutomation
+```
+
+### 3. Run the automatic setup
+
+```powershell
+.\setup.ps1
+```
+
+If PowerShell blocks local scripts, allow them only in the current PowerShell
+window and retry:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\setup.ps1
+```
+
+The setup script:
+
+1. Creates `C:\AutomationProcess\ReportAutomation\.venv`.
+2. Installs the exact packages from `requirements.txt` into that environment.
+3. Creates `C:\AutomationProcess\ReportAutomation\.env` if it is missing.
+4. Leaves an existing `.env` unchanged, protecting previously saved settings.
+
+A successful setup ends with:
+
+```text
+Setup completed.
+```
+
+### 4. Add the private settings
+
+Open the local configuration file:
+
+```powershell
+notepad .env
+```
+
+Set the real username and password. Use a visible browser for the first test:
+
+```dotenv
+POSTAL_USERNAME=your_real_username
+POSTAL_PASSWORD=your_real_password
+POSTAL_HEADLESS=false
+```
+
+Save and close Notepad. Never copy the completed `.env` into GitHub.
+
+### 5. Verify the calculated dates
+
+Use the virtual environment created by setup:
+
+```powershell
+.\.venv\Scripts\python.exe .\main.py --dry-run
+```
+
+This verifies the dates without opening Chrome, signing in, or downloading a
+report.
+
+### 6. Run the first live test
+
+```powershell
+.\run_now.ps1
+```
+
+Watch the browser complete the workflow. A successful run ends with
+`Report downloaded successfully:` followed by the saved ZIP path.
+
+After the visible test succeeds, set `POSTAL_HEADLESS=true` in `.env` for
+scheduled execution.
+
+### 7. Confirm the downloads and logs locations
+
+With the example deployment path, the default locations are:
+
+| Content | Full path |
+| --- | --- |
+| Downloaded ZIP reports | `C:\AutomationProcess\ReportAutomation\downloads` |
+| Scheduled-run logs | `C:\AutomationProcess\ReportAutomation\logs` |
+
+`setup.ps1` does not need to create these operational directories:
+
+- The repository contains placeholder `downloads` and `logs` directories.
+- `main.py` creates the configured download directory if it is missing when a
+  report is downloaded.
+- `run_scheduled.ps1` creates `logs` if it is missing when a scheduled run
+  starts.
+- An on-demand `run_now.ps1` execution prints to PowerShell and does not
+  create a log file.
+
+To save reports somewhere else, set an absolute path in `.env`:
+
+```dotenv
+POSTAL_DOWNLOAD_DIR=C:\AutomationProcess\PostalReports
+```
+
+The configured directory is created automatically when the first report is
+saved.
+
+### 8. Configure PyCharm, if it will be used
+
+Open `C:\AutomationProcess\ReportAutomation` in PyCharm and select this
+existing interpreter:
+
+```text
+C:\AutomationProcess\ReportAutomation\.venv\Scripts\python.exe
+```
+
+Do not ask PyCharm to create a second environment. See
+[Using the project with PyCharm](#using-the-project-with-pycharm) for the
+detailed settings.
+
+### 9. Install the daily Windows schedule
+
+Only after the live test succeeds, install the 07:00 scheduled task:
+
+```powershell
+.\install_daily_task.ps1
+```
+
+Verify it:
+
+```powershell
+Get-ScheduledTask -TaskName "Postal Report Automation - 07-00"
+```
+
+The task stores the current project path. Do not move or rename
+`C:\AutomationProcess\ReportAutomation` afterward unless the task is
+installed again. The current task configuration runs only while its Windows
+user is logged on.
+
 ## Project files
 
 | File or directory | Purpose |
@@ -112,7 +290,7 @@ The setup script:
 1. Creates `.venv` if it does not already exist.
 2. Installs the packages from `requirements.txt`.
 3. Creates `.env` from `.env.example` if necessary.
-4. Creates the `downloads` and `logs` directories.
+4. Leaves an existing `.env` unchanged.
 
 When it succeeds, it prints instructions for editing `.env` and running the
 project. Re-running `setup.ps1` is safe; it reuses the existing virtual
@@ -384,6 +562,28 @@ PowerShell command.
 Use the existing `.venv`; PyCharm does not need to create a second virtual
 environment.
 
+If PyCharm displays:
+
+```text
+Package requirements 'playwright==1.55.0', 'python-dotenv==1.1.1' are not satisfied
+```
+
+first check the selected interpreter. The warning usually means PyCharm is
+examining a different Python interpreter, not that the project setup failed.
+Select the project's `.venv\Scripts\python.exe` as described above. After
+selecting it, **Sync project** is safe and refreshes the requirements for that
+interpreter. Do not use **Ignore requirements**, because that only hides the
+warning.
+
+Confirm the packages from PowerShell without depending on PyCharm:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip show playwright python-dotenv
+```
+
+The command should display information for both packages and show their
+location under the project's `.venv\Lib\site-packages` directory.
+
 An optional PyCharm Run configuration can use:
 
 | Field | Value |
@@ -422,6 +622,7 @@ passed.
 | `py` is not recognized | Install Python and the Windows Python Launcher, then reopen PowerShell. |
 | `Activate.ps1` cannot be loaded | Use the temporary `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` command shown above. |
 | `No module named playwright` | Activate `.venv` and run `python -m pip install -r requirements.txt`. |
+| PyCharm says requirements are not satisfied | Select the project's `.venv\Scripts\python.exe` interpreter, then use **Sync project**. |
 | Playwright browser support is missing | Run `python -m playwright install`. |
 | Google Chrome cannot be found | Install or update Google Chrome. |
 | Username or password error | Check `POSTAL_USERNAME` and `POSTAL_PASSWORD` in the local `.env` file. |
