@@ -10,7 +10,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from pathlib import Path
 
@@ -25,6 +25,7 @@ from playwright.sync_api import (
 )
 
 from dates import build_report_dates
+from file_delivery import copy_report_with_logging
 
 
 # This is the public entry page used by both the live walkthrough and the script.
@@ -39,6 +40,11 @@ PROJECT_LABELS = (
 # A report can take a while to be generated, so downloads get a longer timeout.
 REPORT_TIMEOUT_MS = 180_000
 
+# Default destination requested for the downstream Talend trigger process.
+DEFAULT_COPY_DESTINATION = Path(
+    r"\\FILE-SRV01\epa_files\EpaSyn2\Talend_Triggers"
+)
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -47,6 +53,8 @@ class Settings:
     username: str
     password: str
     download_directory: Path
+    copy_destination: Path
+    log_directory: Path
     reference_date: date
     headless: bool
 
@@ -94,6 +102,20 @@ def load_settings(require_credentials: bool = True) -> Settings:
         os.getenv("POSTAL_DOWNLOAD_DIR", str(default_download_directory))
     ).expanduser()
 
+    # Copy every successfully downloaded report to the Talend trigger share.
+    copy_destination = Path(
+        os.getenv(
+            "POSTAL_COPY_DESTINATION",
+            str(DEFAULT_COPY_DESTINATION),
+        )
+    ).expanduser()
+
+    # Copy attempts get their own log even for an interactive on-demand run.
+    default_log_directory = Path(__file__).parent / "logs"
+    log_directory = Path(
+        os.getenv("POSTAL_LOG_DIR", str(default_log_directory))
+    ).expanduser()
+
     # This override is useful for testing.  Normal runs use the computer's date.
     reference_date_text = os.getenv("POSTAL_REFERENCE_DATE", "").strip()
     if reference_date_text:
@@ -121,6 +143,8 @@ def load_settings(require_credentials: bool = True) -> Settings:
         username=username,
         password=password,
         download_directory=download_directory.resolve(),
+        copy_destination=copy_destination,
+        log_directory=log_directory.resolve(),
         reference_date=reference_date,
         headless=headless,
     )
@@ -353,8 +377,8 @@ def log_out(page: Page) -> None:
     ).wait_for(state="visible")
 
 
-def run_automation(settings: Settings) -> Path:
-    """Run the complete browser workflow and return the downloaded file path."""
+def run_automation(settings: Settings) -> tuple[Path, Path]:
+    """Run the workflow and return the local and network report paths."""
 
     from_date, to_date = build_report_dates(settings.reference_date)
     logged_in = False
@@ -377,10 +401,15 @@ def run_automation(settings: Settings) -> Path:
             report_path = download_report(
                 page, settings.download_directory, settings.reference_date
             )
+            copied_report_path = copy_report_with_logging(
+                report_path,
+                settings.copy_destination,
+                settings.log_directory,
+            )
 
             log_out(page)
             logged_out = True
-            return report_path
+            return report_path, copied_report_path
         finally:
             # If a later step fails, make one best-effort attempt to end the web
             # session before closing the isolated browser context.
@@ -401,13 +430,7 @@ def main() -> None:
     settings = load_settings(require_credentials=not arguments.dry_run)
     if arguments.headless:
         # A command-line option takes precedence over POSTAL_HEADLESS in .env.
-        settings = Settings(
-            username=settings.username,
-            password=settings.password,
-            download_directory=settings.download_directory,
-            reference_date=settings.reference_date,
-            headless=True,
-        )
+        settings = replace(settings, headless=True)
     from_date, to_date = build_report_dates(settings.reference_date)
 
     if arguments.dry_run:
@@ -416,8 +439,9 @@ def main() -> None:
         print(f"ToDate:         {to_date}")
         return
 
-    report_path = run_automation(settings)
+    report_path, copied_report_path = run_automation(settings)
     print(f"Report downloaded successfully: {report_path}")
+    print(f"Network copy verified: {copied_report_path}")
 
 
 if __name__ == "__main__":

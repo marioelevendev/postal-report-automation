@@ -21,7 +21,9 @@ The project is also available on
    - `ΕΠΑ BILLING-ELECTRICITY`
 7. Clicks **Select Projects**, selects all matching dispatches, and downloads
    the report.
-8. Opens the user menu and confirms **Logout**.
+8. Prefixes the filename with the current date in `DDMMYYYY_` format.
+9. Copies the completed ZIP to the Talend trigger share and verifies its size.
+10. Opens the user menu and confirms **Logout**.
 
 ## Date rule
 
@@ -162,9 +164,19 @@ Set the real username and password. Use a visible browser for the first test:
 POSTAL_USERNAME=your_real_username
 POSTAL_PASSWORD=your_real_password
 POSTAL_HEADLESS=false
+POSTAL_COPY_DESTINATION=\\FILE-SRV01\epa_files\EpaSyn2\Talend_Triggers
 ```
 
 Save and close Notepad. Never copy the completed `.env` into GitHub.
+
+Confirm that the destination computer can see the network directory:
+
+```powershell
+Test-Path "\\FILE-SRV01\epa_files\EpaSyn2\Talend_Triggers"
+```
+
+Expected output is `True`. The Windows user that runs the automation must have
+permission to create, rename, replace, and delete files in this directory.
 
 ### 5. Verify the calculated dates
 
@@ -184,7 +196,8 @@ report.
 ```
 
 Watch the browser complete the workflow. A successful run ends with
-`Report downloaded successfully:` followed by the saved ZIP path.
+`Report downloaded successfully:` and `Network copy verified:`, followed by
+the local and network paths.
 
 After the visible test succeeds, set `POSTAL_HEADLESS=true` in `.env` for
 scheduled execution.
@@ -196,17 +209,18 @@ With the example deployment path, the default locations are:
 | Content | Full path |
 | --- | --- |
 | Downloaded ZIP reports | `C:\AutomationProcess\ReportAutomation\downloads` |
-| Scheduled-run logs | `C:\AutomationProcess\ReportAutomation\logs` |
+| Copy and scheduled-run logs | `C:\AutomationProcess\ReportAutomation\logs` |
+| Talend trigger copy | `\\FILE-SRV01\epa_files\EpaSyn2\Talend_Triggers` |
 
 `setup.ps1` does not need to create these operational directories:
 
 - The repository contains placeholder `downloads` and `logs` directories.
 - `main.py` creates the configured download directory if it is missing when a
   report is downloaded.
+- Every copy attempt is appended to `logs\copy_YYYY-MM-DD.log`, including
+  interactive runs.
 - `run_scheduled.ps1` creates `logs` if it is missing when a scheduled run
-  starts.
-- An on-demand `run_now.ps1` execution prints to PowerShell and does not
-  create a log file.
+  starts and also records the complete scheduled run in a timestamped log.
 
 To save reports somewhere else, set an absolute path in `.env`:
 
@@ -255,13 +269,14 @@ user is logged on.
 | --- | --- |
 | `main.py` | Runs the browser automation. |
 | `dates.py` | Calculates the requested FromDate and ToDate values. |
+| `file_delivery.py` | Copies the report safely to the Talend trigger share and writes copy logs. |
 | `.env.example` | Safe template showing the available private settings. |
 | `.env` | Your private credentials and settings; it is not uploaded to GitHub. |
 | `requirements.txt` | Lists the Python packages required by the project. |
 | `setup.ps1` | Creates the virtual environment and installs dependencies. |
 | `run_now.ps1` | Runs the automation immediately. |
 | `install_daily_task.ps1` | Optionally creates a Windows Scheduled Task. |
-| `tests` | Contains automated tests for the date calculations. |
+| `tests` | Contains automated tests for date calculations and file delivery. |
 | `downloads` | Default location for downloaded reports. |
 | `logs` | Output from scheduled runs. |
 
@@ -435,6 +450,7 @@ At minimum, replace the placeholder values:
 POSTAL_USERNAME=your_real_username
 POSTAL_PASSWORD=your_real_password
 POSTAL_HEADLESS=true
+POSTAL_COPY_DESTINATION=\\FILE-SRV01\epa_files\EpaSyn2\Talend_Triggers
 ```
 
 Available settings:
@@ -445,6 +461,8 @@ Available settings:
 | `POSTAL_PASSWORD` | Postal Management password. Required for a real run. |
 | `POSTAL_HEADLESS` | `true` hides Chrome; `false` shows the browser. |
 | `POSTAL_DOWNLOAD_DIR` | Optional custom directory for downloaded reports. |
+| `POSTAL_COPY_DESTINATION` | Destination for the verified ZIP copy. Defaults to the Talend trigger UNC path. |
+| `POSTAL_LOG_DIR` | Optional custom directory for copy and scheduled-run logs. |
 | `POSTAL_REFERENCE_DATE` | Optional testing override in `YYYY-MM-DD` format. Normally leave empty. |
 
 Security notes:
@@ -474,6 +492,38 @@ downloaded on 21 October 2026 is saved as:
 ```text
 21102026_Dispatches_New_1810141_1810139_1809553_1809558_1808917_More.csv.zip
 ```
+
+## Copy to the Talend trigger directory
+
+After the local ZIP is saved, the automation copies the same date-prefixed file
+to:
+
+```text
+\\FILE-SRV01\epa_files\EpaSyn2\Talend_Triggers
+```
+
+The delivery procedure is designed for a watched trigger directory:
+
+1. It confirms that the destination directory is available.
+2. It copies the report with a `.copying` suffix, so the final ZIP filename is
+   not visible to Talend during transfer.
+3. It verifies that the local and copied byte counts match.
+4. It atomically renames the temporary file to the final ZIP filename.
+5. It replaces an older same-named file if the automation is repeated that day.
+6. It records success or failure in `logs\copy_YYYY-MM-DD.log`.
+
+Network failures are retried three times with a five-second delay. If every
+attempt fails:
+
+- The original report remains safely in the local `downloads` directory.
+- Any incomplete `.copying` file is removed when possible.
+- The application exits with a clear error and points to the copy log.
+- The browser cleanup still makes a best-effort logout attempt.
+
+The Windows account used by an interactive or scheduled run must have
+create/write/rename/delete permission on the UNC directory. A mapped drive
+letter is deliberately not used because scheduled tasks may not see interactive
+drive mappings.
 
 For an on-demand run without showing Chrome:
 
@@ -696,6 +746,7 @@ passed.
 | A timeout occurs | Check the internet connection, website availability, and whether the website layout or wording changed. |
 | The scheduled run did not start | Confirm the computer was available, the schedule is active, and inspect files in `logs`. |
 | No report appears | Inspect the PowerShell output or the latest log for an error and check the configured downloads directory. |
+| The local report downloads but the network copy fails | Run `Test-Path "\\FILE-SRV01\epa_files\EpaSyn2\Talend_Triggers"`, verify the running Windows account's share/NTFS permissions, and inspect `logs\copy_YYYY-MM-DD.log`. |
 
 ## GitHub and generated files
 
