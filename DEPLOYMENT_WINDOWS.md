@@ -84,12 +84,79 @@ dist\postal-report-automation-deployment.zip.sha256.txt
 The package excludes `.env`, `.venv`, Git metadata, IDE settings, reports,
 logs, caches, and earlier deployment archives.
 
+## First ZIP deployment
+
+The production installation root is:
+
+```text
+C:\AutomationProcess\postal-report-automation
+```
+
+On the deployment computer, create the transfer directory:
+
+```powershell
+New-Item -ItemType Directory -Path "C:\AutomationProcess\postal-report-automation\dist" -Force
+```
+
+Copy these two files from the tracked development computer's `dist` directory
+into that deployment `dist` directory:
+
+```text
+postal-report-automation-deployment.zip
+postal-report-automation-deployment.zip.sha256.txt
+```
+
+On the deployment computer, verify and extract them:
+
+```powershell
+$projectRoot = "C:\AutomationProcess\postal-report-automation"
+$zip = "$projectRoot\dist\postal-report-automation-deployment.zip"
+$hashFile = "$zip.sha256.txt"
+$expectedHash = ((Get-Content -LiteralPath $hashFile -Raw).Trim() -split "\s+")[0]
+$actualHash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash
+if ($actualHash -ne $expectedHash) {
+    throw "Deployment ZIP checksum verification failed."
+}
+Expand-Archive -LiteralPath $zip -DestinationPath $projectRoot -Force
+Set-Location $projectRoot
+.\setup.ps1
+```
+
+For a new installation, configure the private file:
+
+```powershell
+notepad .env
+```
+
+Set the credentials and production options:
+
+```dotenv
+POSTAL_HEADLESS=true
+POSTAL_COPY_TO_TALEND=true
+POSTAL_TALEND_TRIGGER_DIR=\\FILE-SRV01\epa_files\EpaSyn2\Talend_Triggers
+```
+
+Run the tests and dry run:
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe .\main.py --dry-run
+Test-Path "\\FILE-SRV01\epa_files\EpaSyn2\Talend_Triggers"
+```
+
+After a successful visible test, install the daily 07:05 task:
+
+```powershell
+.\install_daily_task.ps1
+```
+
 ## Updating an existing ZIP installation
 
 Copy both generated files into the installed application's `dist` directory,
 then run:
 
 ```powershell
+Set-Location "C:\AutomationProcess\postal-report-automation"
 .\update_from_deployment.ps1
 ```
 

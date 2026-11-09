@@ -68,12 +68,15 @@ PowerShell says that `py` is not recognized, install Python from
 [python.org](https://www.python.org/downloads/windows/) and enable the option to
 add the Python launcher to Windows.
 
-## Deploy on another Windows computer
+## Optional tracked Git deployment
 
-The following numbered procedure installs the project in the example location:
+For the THALIS-style production ZIP procedure, use
+[DEPLOYMENT_WINDOWS.md](DEPLOYMENT_WINDOWS.md). The following numbered procedure
+is the alternative for a destination computer that should itself contain a
+tracked Git checkout:
 
 ```text
-C:\AutomationProcess\ReportAutomation
+C:\AutomationProcess\postal-report-automation
 ```
 
 ### 1. Install the prerequisites
@@ -106,11 +109,12 @@ Create the parent directory, clone the GitHub repository, and enter the project:
 
 ```powershell
 New-Item -ItemType Directory -Path "C:\AutomationProcess" -Force
-git clone https://github.com/marioelevendev/postal-report-automation.git "C:\AutomationProcess\ReportAutomation"
-Set-Location "C:\AutomationProcess\ReportAutomation"
+git clone https://github.com/marioelevendev/postal-report-automation.git "C:\AutomationProcess\postal-report-automation"
+Set-Location "C:\AutomationProcess\postal-report-automation"
 ```
 
-The `ReportAutomation` directory must not already contain unrelated files.
+The `postal-report-automation` directory must not already contain unrelated
+files.
 Verify the location:
 
 ```powershell
@@ -120,7 +124,7 @@ Get-Location
 Expected path:
 
 ```text
-C:\AutomationProcess\ReportAutomation
+C:\AutomationProcess\postal-report-automation
 ```
 
 ### 3. Run the automatic setup
@@ -139,9 +143,10 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 
 The setup script:
 
-1. Creates `C:\AutomationProcess\ReportAutomation\.venv`.
+1. Creates `C:\AutomationProcess\postal-report-automation\.venv`.
 2. Installs the exact packages from `requirements.txt` into that environment.
-3. Creates `C:\AutomationProcess\ReportAutomation\.env` if it is missing.
+3. Creates `C:\AutomationProcess\postal-report-automation\.env` if it is
+   missing.
 4. Leaves an existing `.env` unchanged, protecting previously saved settings.
 
 A successful setup ends with:
@@ -209,8 +214,8 @@ With the example deployment path, the default locations are:
 
 | Content | Full path |
 | --- | --- |
-| Downloaded ZIP reports | `C:\AutomationProcess\ReportAutomation\downloads` |
-| Copy and scheduled-run logs | `C:\AutomationProcess\ReportAutomation\logs` |
+| Downloaded ZIP reports | `C:\AutomationProcess\postal-report-automation\downloads` |
+| Copy and scheduled-run logs | `C:\AutomationProcess\postal-report-automation\logs` |
 | Talend trigger copy | `\\FILE-SRV01\epa_files\EpaSyn2\Talend_Triggers` |
 
 `setup.ps1` does not need to create these operational directories:
@@ -234,11 +239,11 @@ saved.
 
 ### 8. Configure PyCharm, if it will be used
 
-Open `C:\AutomationProcess\ReportAutomation` in PyCharm and select this
+Open `C:\AutomationProcess\postal-report-automation` in PyCharm and select this
 existing interpreter:
 
 ```text
-C:\AutomationProcess\ReportAutomation\.venv\Scripts\python.exe
+C:\AutomationProcess\postal-report-automation\.venv\Scripts\python.exe
 ```
 
 Do not ask PyCharm to create a second environment. See
@@ -260,7 +265,7 @@ Get-ScheduledTask -TaskName "Postal Report Automation"
 ```
 
 The task stores the current project path. Do not move or rename
-`C:\AutomationProcess\ReportAutomation` afterward unless the task is
+`C:\AutomationProcess\postal-report-automation` afterward unless the task is
 installed again. The installer asks for the Windows password so the task can
 run while the user is logged out and still access the UNC share.
 
