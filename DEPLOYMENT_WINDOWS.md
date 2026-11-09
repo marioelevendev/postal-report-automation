@@ -128,23 +128,31 @@ For a new installation, configure the private file:
 notepad .env
 ```
 
-Set the credentials and production options:
+Set the credentials and use safe visible-test options first:
 
 ```dotenv
-POSTAL_HEADLESS=true
-POSTAL_COPY_TO_TALEND=true
+POSTAL_HEADLESS=false
+POSTAL_COPY_TO_TALEND=false
 POSTAL_TALEND_TRIGGER_DIR=\\FILE-SRV01\epa_files\EpaSyn2\Talend_Triggers
 ```
 
-Run the tests and dry run:
+Run the tests, dry run, and one visible local-download test:
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 .\.venv\Scripts\python.exe .\main.py --dry-run
+.\run_now.ps1
 Test-Path "\\FILE-SRV01\epa_files\EpaSyn2\Talend_Triggers"
 ```
 
-After a successful visible test, install the daily 07:05 task:
+After the visible test succeeds and `Test-Path` returns `True`, change:
+
+```dotenv
+POSTAL_HEADLESS=true
+POSTAL_COPY_TO_TALEND=true
+```
+
+Then install the daily 07:05 task:
 
 ```powershell
 .\install_daily_task.ps1
