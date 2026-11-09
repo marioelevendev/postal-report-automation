@@ -1,5 +1,7 @@
 # Python virtual environments and generated cache files.
 .venv/
+.venv-python-old/
+.idea/
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -13,6 +15,7 @@ downloads/*
 
 # Failure and debug artifacts, if added during local troubleshooting.
 artifacts/
+dist/
 
 # Local scheduler logs may contain operational details.
 logs/

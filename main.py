@@ -53,7 +53,8 @@ class Settings:
     username: str
     password: str
     download_directory: Path
-    copy_destination: Path
+    copy_to_talend: bool
+    talend_trigger_directory: Path
     log_directory: Path
     reference_date: date
     headless: bool
@@ -76,6 +77,24 @@ def parse_arguments() -> argparse.Namespace:
         help="Run Chrome without showing a browser window (recommended for scheduling).",
     )
     return parser.parse_args()
+
+
+def _read_boolean(variable_name: str, default: bool) -> bool:
+    """Read a friendly true/false value from an environment variable."""
+
+    raw_value = os.getenv(variable_name)
+    if raw_value is None:
+        return default
+
+    normalized_value = raw_value.strip().lower()
+    if normalized_value in {"1", "true", "yes", "on"}:
+        return True
+    if normalized_value in {"0", "false", "no", "off"}:
+        return False
+
+    raise RuntimeError(
+        f"{variable_name} must be true/false, yes/no, on/off, or 1/0."
+    )
 
 
 def load_settings(require_credentials: bool = True) -> Settings:
@@ -102,10 +121,14 @@ def load_settings(require_credentials: bool = True) -> Settings:
         os.getenv("POSTAL_DOWNLOAD_DIR", str(default_download_directory))
     ).expanduser()
 
-    # Copy every successfully downloaded report to the Talend trigger share.
-    copy_destination = Path(
+    # Network delivery is explicitly controlled like the THALIS automation.
+    copy_to_talend = _read_boolean(
+        "POSTAL_COPY_TO_TALEND",
+        default=False,
+    )
+    talend_trigger_directory = Path(
         os.getenv(
-            "POSTAL_COPY_DESTINATION",
+            "POSTAL_TALEND_TRIGGER_DIR",
             str(DEFAULT_COPY_DESTINATION),
         )
     ).expanduser()
@@ -143,7 +166,8 @@ def load_settings(require_credentials: bool = True) -> Settings:
         username=username,
         password=password,
         download_directory=download_directory.resolve(),
-        copy_destination=copy_destination,
+        copy_to_talend=copy_to_talend,
+        talend_trigger_directory=talend_trigger_directory,
         log_directory=log_directory.resolve(),
         reference_date=reference_date,
         headless=headless,
@@ -377,7 +401,7 @@ def log_out(page: Page) -> None:
     ).wait_for(state="visible")
 
 
-def run_automation(settings: Settings) -> tuple[Path, Path]:
+def run_automation(settings: Settings) -> tuple[Path, Path | None]:
     """Run the workflow and return the local and network report paths."""
 
     from_date, to_date = build_report_dates(settings.reference_date)
@@ -401,11 +425,15 @@ def run_automation(settings: Settings) -> tuple[Path, Path]:
             report_path = download_report(
                 page, settings.download_directory, settings.reference_date
             )
-            copied_report_path = copy_report_with_logging(
-                report_path,
-                settings.copy_destination,
-                settings.log_directory,
-            )
+            copied_report_path: Path | None = None
+            if settings.copy_to_talend:
+                copied_report_path = copy_report_with_logging(
+                    report_path,
+                    settings.talend_trigger_directory,
+                    settings.log_directory,
+                )
+            else:
+                print("Talend network copy is disabled by POSTAL_COPY_TO_TALEND.")
 
             log_out(page)
             logged_out = True
@@ -441,7 +469,8 @@ def main() -> None:
 
     report_path, copied_report_path = run_automation(settings)
     print(f"Report downloaded successfully: {report_path}")
-    print(f"Network copy verified: {copied_report_path}")
+    if copied_report_path is not None:
+        print(f"Network copy verified: {copied_report_path}")
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@
 
 This Python project automates the Postal Management report workflow. It can run
 on demand in a visible Chrome window or automatically in headless mode every day
-at **07:00 Europe/Athens time**.
+at **07:05 Europe/Athens time**.
 
 The project is also available on
 [GitHub](https://github.com/marioelevendev/postal-report-automation).
@@ -164,7 +164,8 @@ Set the real username and password. Use a visible browser for the first test:
 POSTAL_USERNAME=your_real_username
 POSTAL_PASSWORD=your_real_password
 POSTAL_HEADLESS=false
-POSTAL_COPY_DESTINATION=\\FILE-SRV01\epa_files\EpaSyn2\Talend_Triggers
+POSTAL_COPY_TO_TALEND=true
+POSTAL_TALEND_TRIGGER_DIR=\\FILE-SRV01\epa_files\EpaSyn2\Talend_Triggers
 ```
 
 Save and close Notepad. Never copy the completed `.env` into GitHub.
@@ -246,7 +247,7 @@ detailed settings.
 
 ### 9. Install the daily Windows schedule
 
-Only after the live test succeeds, install the 07:00 scheduled task:
+Only after the live test succeeds, install the 07:05 scheduled task:
 
 ```powershell
 .\install_daily_task.ps1
@@ -255,13 +256,13 @@ Only after the live test succeeds, install the 07:00 scheduled task:
 Verify it:
 
 ```powershell
-Get-ScheduledTask -TaskName "Postal Report Automation - 07-00"
+Get-ScheduledTask -TaskName "Postal Report Automation"
 ```
 
 The task stores the current project path. Do not move or rename
 `C:\AutomationProcess\ReportAutomation` afterward unless the task is
-installed again. The current task configuration runs only while its Windows
-user is logged on.
+installed again. The installer asks for the Windows password so the task can
+run while the user is logged out and still access the UNC share.
 
 ## Project files
 
@@ -276,6 +277,9 @@ user is logged on.
 | `setup.ps1` | Creates the virtual environment and installs dependencies. |
 | `run_now.ps1` | Runs the automation immediately. |
 | `install_daily_task.ps1` | Optionally creates a Windows Scheduled Task. |
+| `build_deployment.ps1` | Builds a secret-free deployment ZIP and SHA-256 file. |
+| `update_from_deployment.ps1` | Safely updates an existing ZIP installation. |
+| `DEPLOYMENT_WINDOWS.md` | Documents tracked-checkout and ZIP deployment. |
 | `tests` | Contains automated tests for date calculations and file delivery. |
 | `downloads` | Default location for downloaded reports. |
 | `logs` | Output from scheduled runs. |
@@ -285,7 +289,7 @@ user is logged on.
 Open PowerShell and move to the project directory:
 
 ```powershell
-Set-Location "C:\Users\m.diles\Documents\ChatGPT\Python\postal_report_automation"
+Set-Location "C:\Users\m.diles\PycharmProjects\postal_report_automation"
 ```
 
 `Set-Location` changes PowerShell's current directory. Most commands in this
@@ -371,7 +375,7 @@ True
 After activation, the PowerShell prompt normally begins with `(.venv)`:
 
 ```text
-(.venv) PS C:\Users\m.diles\Documents\ChatGPT\Python\postal_report_automation>
+(.venv) PS C:\Users\m.diles\PycharmProjects\postal_report_automation>
 ```
 
 Activation affects only the current PowerShell window. A new PowerShell window
@@ -450,7 +454,8 @@ At minimum, replace the placeholder values:
 POSTAL_USERNAME=your_real_username
 POSTAL_PASSWORD=your_real_password
 POSTAL_HEADLESS=true
-POSTAL_COPY_DESTINATION=\\FILE-SRV01\epa_files\EpaSyn2\Talend_Triggers
+POSTAL_COPY_TO_TALEND=true
+POSTAL_TALEND_TRIGGER_DIR=\\FILE-SRV01\epa_files\EpaSyn2\Talend_Triggers
 ```
 
 Available settings:
@@ -461,7 +466,8 @@ Available settings:
 | `POSTAL_PASSWORD` | Postal Management password. Required for a real run. |
 | `POSTAL_HEADLESS` | `true` hides Chrome; `false` shows the browser. |
 | `POSTAL_DOWNLOAD_DIR` | Optional custom directory for downloaded reports. |
-| `POSTAL_COPY_DESTINATION` | Destination for the verified ZIP copy. Defaults to the Talend trigger UNC path. |
+| `POSTAL_COPY_TO_TALEND` | `true` enables Talend delivery; `false` keeps the report only locally. |
+| `POSTAL_TALEND_TRIGGER_DIR` | Destination for the verified ZIP copy. |
 | `POSTAL_LOG_DIR` | Optional custom directory for copy and scheduled-run logs. |
 | `POSTAL_REFERENCE_DATE` | Optional testing override in `YYYY-MM-DD` format. Normally leave empty. |
 
@@ -495,8 +501,8 @@ downloaded on 21 October 2026 is saved as:
 
 ## Copy to the Talend trigger directory
 
-After the local ZIP is saved, the automation copies the same date-prefixed file
-to:
+When `POSTAL_COPY_TO_TALEND=true`, the automation copies the same
+date-prefixed file to:
 
 ```text
 \\FILE-SRV01\epa_files\EpaSyn2\Talend_Triggers
@@ -563,41 +569,37 @@ by the existing authentication process.
 If the field is empty, the automation stops with a clear error. This is
 intentional: it avoids repeatedly submitting an invalid or missing code.
 
-## Daily execution at 07:00
+## Daily execution at 07:05
 
-A Codex recurring local job named **Daily postal report** is active and is
-configured for **07:00 Europe/Athens time**.
+Windows Task Scheduler is used for the production schedule. The task is named
+`Postal Report Automation` and runs every day at **07:05 local computer
+time**.
 
 Important:
 
-- The computer and the local execution host must be available at run time.
+- The computer must be powered on, or the task starts when Windows next becomes
+  available.
 - Keep the local project, `.venv`, and `.env` in place.
-- Do not create a second schedule unless the Codex job is disabled. Two active
-  schedules could download the same report twice.
+- Do not create a second schedule; two active schedules could download and
+  deliver the same report twice.
 - Scheduled runs use headless mode and write diagnostic output to `logs`.
+- The password-backed task can run while the user is logged out and can access
+  the UNC Talend share.
 
-### Optional Windows Task Scheduler alternative
-
-If the Codex job is intentionally disabled, install the standalone Windows task:
+Install or replace the task:
 
 ```powershell
-.\install_daily_task.ps1
+.\install_daily_task.ps1 -Force
 ```
 
-A successful command prints a message confirming that the task was installed.
-The task is named `Postal Report Automation - 07-00`. It:
-
-- Uses the computer's local Europe/Athens time.
-- Runs at 07:00 every day.
-- Starts later when Windows reports that the scheduled start was missed.
-- Runs only while the current Windows user is logged on, avoiding storage of
-  the Windows account password in Task Scheduler.
-- Runs the automation in headless mode.
+Enter the Windows password in the secure credential prompt. The script does not
+write that password to project files.
 
 Verify the task with:
 
 ```powershell
-Get-ScheduledTask -TaskName "Postal Report Automation - 07-00"
+Get-ScheduledTask -TaskName "Postal Report Automation"
+Get-ScheduledTaskInfo -TaskName "Postal Report Automation"
 ```
 
 Its state will normally be `Ready` while it is waiting for the next run.
@@ -608,7 +610,7 @@ PyCharm can be used as the editor while every setup and run action remains a
 PowerShell command.
 
 1. In PyCharm, choose **Open** and select:
-   `C:\Users\m.diles\Documents\ChatGPT\Python\postal_report_automation`
+   `C:\Users\m.diles\PycharmProjects\postal_report_automation`
 2. Open **File → Settings → Project → Python Interpreter**.
 3. Choose **Add Interpreter → Add Local Interpreter → Existing**.
 4. Select:
@@ -655,7 +657,7 @@ Close the PyCharm Settings dialog. In PowerShell, enter the project directory
 and deactivate the environment if the prompt starts with `(.venv)`:
 
 ```powershell
-Set-Location "C:\Users\m.diles\Documents\ChatGPT\Python\postal_report_automation"
+Set-Location "C:\Users\m.diles\PycharmProjects\postal_report_automation"
 deactivate
 ```
 
@@ -684,7 +686,7 @@ Return to PyCharm, remove the invalid interpreter entry if it is still listed,
 and add this existing interpreter again:
 
 ```text
-C:\Users\m.diles\Documents\ChatGPT\Python\postal_report_automation\.venv\Scripts\python.exe
+C:\Users\m.diles\PycharmProjects\postal_report_automation\.venv\Scripts\python.exe
 ```
 
 After PyCharm accepts that interpreter, use **Sync project**. The private
@@ -721,13 +723,13 @@ python -m unittest discover -s tests -v
 Expected final output:
 
 ```text
-Ran 2 tests in ...
+Ran 7 tests in ...
 
 OK
 ```
 
-The elapsed time may differ. `OK` means that the tested date calculations
-passed.
+The elapsed time and count may grow as tests are added. `OK` means that the
+date, delivery, and configuration tests passed.
 
 ## Troubleshooting
 
@@ -747,6 +749,27 @@ passed.
 | The scheduled run did not start | Confirm the computer was available, the schedule is active, and inspect files in `logs`. |
 | No report appears | Inspect the PowerShell output or the latest log for an error and check the configured downloads directory. |
 | The local report downloads but the network copy fails | Run `Test-Path "\\FILE-SRV01\epa_files\EpaSyn2\Talend_Triggers"`, verify the running Windows account's share/NTFS permissions, and inspect `logs\copy_YYYY-MM-DD.log`. |
+
+## Deployment files
+
+The complete tracked-checkout and credential-free ZIP procedures are in
+[DEPLOYMENT_WINDOWS.md](DEPLOYMENT_WINDOWS.md).
+
+Build a safe deployment package with:
+
+```powershell
+.\build_deployment.ps1
+```
+
+Update an existing ZIP installation with:
+
+```powershell
+.\update_from_deployment.ps1
+```
+
+The ZIP builder uses an explicit allow-list and verifies that credentials,
+virtual environments, Git metadata, IDE settings, reports, logs, and caches are
+not included.
 
 ## GitHub and generated files
 
