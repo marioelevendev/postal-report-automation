@@ -27,6 +27,7 @@ $outputDirectory = Split-Path -Parent $resolvedOutputPath
 $rootFiles = @(
     ".env.example",
     ".gitignore",
+    "append_network_log.ps1",
     "build_deployment.ps1",
     "dates.py",
     "DEPLOYMENT_WINDOWS.md",
@@ -128,4 +129,3 @@ finally {
         Remove-Item -LiteralPath $stagingDirectory -Recurse -Force
     }
 }
-

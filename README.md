@@ -24,6 +24,8 @@ The project is also available on
 8. Prefixes the filename with the current date in `DDMMYYYY_` format.
 9. Copies the completed ZIP to the Talend trigger share and verifies its size.
 10. Opens the user menu and confirms **Logout**.
+11. During a scheduled run, keeps a timestamped local log and appends the same
+    run output to the shared RPA log file.
 
 ## Date rule
 
@@ -171,6 +173,8 @@ POSTAL_PASSWORD=your_real_password
 POSTAL_HEADLESS=false
 POSTAL_COPY_TO_TALEND=true
 POSTAL_TALEND_TRIGGER_DIR=\\FILE-SRV01\epa_files\EpaSyn2\Talend_Triggers
+POSTAL_APPEND_NETWORK_LOG=true
+POSTAL_NETWORK_LOG_FILE=\\kronos.epa.aerioattikis.gr\EPA_Workspace\AutomationProcess\RPALogs\postal-report-automation-1001234.txt
 ```
 
 Save and close Notepad. Never copy the completed `.env` into GitHub.
@@ -217,6 +221,7 @@ With the example deployment path, the default locations are:
 | Downloaded ZIP reports | `C:\AutomationProcess\postal-report-automation\downloads` |
 | Copy and scheduled-run logs | `C:\AutomationProcess\postal-report-automation\logs` |
 | Talend trigger copy | `\\FILE-SRV01\epa_files\EpaSyn2\Talend_Triggers` |
+| Appended RPA run log | `\\kronos.epa.aerioattikis.gr\EPA_Workspace\AutomationProcess\RPALogs\postal-report-automation-1001234.txt` |
 
 `setup.ps1` does not need to create these operational directories:
 
@@ -281,6 +286,8 @@ run while the user is logged out and still access the UNC share.
 | `requirements.txt` | Lists the Python packages required by the project. |
 | `setup.ps1` | Creates the virtual environment and installs dependencies. |
 | `run_now.ps1` | Runs the automation immediately. |
+| `run_scheduled.ps1` | Runs headlessly, saves a local log, and publishes it to the shared append-only log. |
+| `append_network_log.ps1` | Appends a completed run to the shared log with retries. |
 | `install_daily_task.ps1` | Optionally creates a Windows Scheduled Task. |
 | `build_deployment.ps1` | Builds a secret-free deployment ZIP and SHA-256 file. |
 | `update_from_deployment.ps1` | Safely updates an existing ZIP installation. |
@@ -461,6 +468,8 @@ POSTAL_PASSWORD=your_real_password
 POSTAL_HEADLESS=true
 POSTAL_COPY_TO_TALEND=true
 POSTAL_TALEND_TRIGGER_DIR=\\FILE-SRV01\epa_files\EpaSyn2\Talend_Triggers
+POSTAL_APPEND_NETWORK_LOG=true
+POSTAL_NETWORK_LOG_FILE=\\kronos.epa.aerioattikis.gr\EPA_Workspace\AutomationProcess\RPALogs\postal-report-automation-1001234.txt
 ```
 
 Available settings:
@@ -474,6 +483,8 @@ Available settings:
 | `POSTAL_COPY_TO_TALEND` | `true` enables Talend delivery; `false` keeps the report only locally. |
 | `POSTAL_TALEND_TRIGGER_DIR` | Destination for the verified ZIP copy. |
 | `POSTAL_LOG_DIR` | Optional custom directory for copy and scheduled-run logs. |
+| `POSTAL_APPEND_NETWORK_LOG` | `true` appends each scheduled run to the shared RPA log; `false` keeps only the local scheduled-run log. |
+| `POSTAL_NETWORK_LOG_FILE` | Full UNC filename of the append-only shared RPA log. |
 | `POSTAL_REFERENCE_DATE` | Optional testing override in `YYYY-MM-DD` format. Normally leave empty. |
 
 Security notes:
@@ -536,6 +547,32 @@ create/write/rename/delete permission on the UNC directory. A mapped drive
 letter is deliberately not used because scheduled tasks may not see interactive
 drive mappings.
 
+## Shared append-only scheduled-run log
+
+When `POSTAL_APPEND_NETWORK_LOG=true`, every execution of
+`run_scheduled.ps1` first writes its normal timestamped local file and then
+appends that complete run to:
+
+```text
+\\kronos.epa.aerioattikis.gr\EPA_Workspace\AutomationProcess\RPALogs\postal-report-automation-1001234.txt
+```
+
+The shared file is never overwritten. Each appended block includes a separator,
+start and finish times, computer, Windows account, local source-log path, and
+automation exit code. Both successful and failed automation runs are appended.
+
+The network operation is attempted three times with a five-second delay. If it
+still fails, the timestamped local log is preserved and the scheduled run exits
+with an error so Task Scheduler records the problem. The task's Windows account
+must have permission to create the file and append data in the `RPALogs`
+directory. Test access on the deployment computer with:
+
+```powershell
+Test-Path "\\kronos.epa.aerioattikis.gr\EPA_Workspace\AutomationProcess\RPALogs"
+```
+
+Expected output is `True`. Do not use a mapped drive letter for this setting.
+
 For an on-demand run without showing Chrome:
 
 ```powershell
@@ -588,8 +625,10 @@ Important:
 - Do not create a second schedule; two active schedules could download and
   deliver the same report twice.
 - Scheduled runs use headless mode and write diagnostic output to `logs`.
+- Scheduled runs append the same output to the configured shared RPA log when
+  `POSTAL_APPEND_NETWORK_LOG=true`.
 - The password-backed task can run while the user is logged out and can access
-  the UNC Talend share.
+  both configured UNC shares.
 
 Install or replace the task:
 
@@ -754,6 +793,7 @@ date, delivery, and configuration tests passed.
 | The scheduled run did not start | Confirm the computer was available, the schedule is active, and inspect files in `logs`. |
 | No report appears | Inspect the PowerShell output or the latest log for an error and check the configured downloads directory. |
 | The local report downloads but the network copy fails | Run `Test-Path "\\FILE-SRV01\epa_files\EpaSyn2\Talend_Triggers"`, verify the running Windows account's share/NTFS permissions, and inspect `logs\copy_YYYY-MM-DD.log`. |
+| The shared RPA log is not updated | Inspect the newest timestamped file in `logs`, run `Test-Path "\\kronos.epa.aerioattikis.gr\EPA_Workspace\AutomationProcess\RPALogs"` as the scheduled-task account, and verify create/append share and NTFS permissions. |
 
 ## Deployment files
 
@@ -771,6 +811,13 @@ Update an existing ZIP installation with:
 ```powershell
 .\update_from_deployment.ps1
 ```
+
+For a redeployment, build a fresh ZIP and checksum in the tracked development
+checkout, copy both files into
+`C:\AutomationProcess\postal-report-automation\dist`, and run the updater from
+the production project root. The updater preserves the production `.env` and
+`.venv`. New settings are therefore added manually to `.env`; the complete
+numbered procedure is in [DEPLOYMENT_WINDOWS.md](DEPLOYMENT_WINDOWS.md).
 
 The ZIP builder uses an explicit allow-list and verifies that credentials,
 virtual environments, Git metadata, IDE settings, reports, logs, and caches are
@@ -813,4 +860,3 @@ If the website wording or HTML changes, the script raises an error instead of
 silently selecting an unintended project. Do not weaken these checks without
 first confirming the live page structure and the exact rows that may be
 selected.
-
