@@ -249,6 +249,11 @@ The existing task does not need to be reinstalled because it already points to
 the same `run_scheduled.ps1` path. Reinstall it only if its account, time,
 project path, or task definition must change.
 
+This version also corrects the mixed UTF-8/UTF-16 scheduled-log output that
+displayed spaces between letters. New local and shared-log sections will be
+normal UTF-8 text. Previously appended malformed sections are historical data
+and are intentionally left unchanged.
+
 Run a controlled scheduled-mode test, then inspect the local and shared logs:
 
 ```powershell

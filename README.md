@@ -560,6 +560,8 @@ appends that complete run to:
 The shared file is never overwritten. Each appended block includes a separator,
 start and finish times, computer, Windows account, local source-log path, and
 automation exit code. Both successful and failed automation runs are appended.
+Scheduled output is written consistently as UTF-8, preventing the embedded NUL
+bytes that Windows PowerShell's default UTF-16 file output can introduce.
 
 The network operation is attempted three times with a five-second delay. If it
 still fails, the timestamped local log is preserved and the scheduled run exits
@@ -794,6 +796,7 @@ date, delivery, and configuration tests passed.
 | No report appears | Inspect the PowerShell output or the latest log for an error and check the configured downloads directory. |
 | The local report downloads but the network copy fails | Run `Test-Path "\\FILE-SRV01\epa_files\EpaSyn2\Talend_Triggers"`, verify the running Windows account's share/NTFS permissions, and inspect `logs\copy_YYYY-MM-DD.log`. |
 | The shared RPA log is not updated | Inspect the newest timestamped file in `logs`, run `Test-Path "\\kronos.epa.aerioattikis.gr\EPA_Workspace\AutomationProcess\RPALogs"` as the scheduled-task account, and verify create/append share and NTFS permissions. |
+| Letters in an older shared-log section have spaces between them | That section was written by an earlier mixed UTF-8/UTF-16 version. Redeploy the current version; new sections are UTF-8. Existing historical text is not modified automatically. |
 
 ## Deployment files
 

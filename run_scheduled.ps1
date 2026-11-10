@@ -104,8 +104,22 @@ Set-Content -LiteralPath $logFile -Value $header -Encoding UTF8
 
 $automationExitCode = 1
 try {
+    $utf8WithoutBom = [System.Text.UTF8Encoding]::new($false)
+
+    # Windows PowerShell 5.1 makes Tee-Object append file output as UTF-16.
+    # Appending that to the UTF-8 header inserts NUL bytes, which later appear
+    # as spaces between every letter. Write each displayed line explicitly as
+    # UTF-8 so the entire local and shared log has one consistent encoding.
     & $pythonExecutable $mainScript --headless *>&1 |
-        Tee-Object -FilePath $logFile -Append
+        ForEach-Object {
+            $outputLine = $_.ToString()
+            Write-Host $outputLine
+            [System.IO.File]::AppendAllText(
+                $logFile,
+                $outputLine + [Environment]::NewLine,
+                $utf8WithoutBom
+            )
+        }
     $automationExitCode = $LASTEXITCODE
 }
 catch {
