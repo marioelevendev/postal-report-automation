@@ -172,7 +172,17 @@ Then install the daily 07:05 task:
 
 Use these steps for every redeployment.
 
-### 1. Update and verify the tracked development checkout
+There are **two different computers** in this procedure:
+
+| Computer | Project directory | Purpose |
+| --- | --- | --- |
+| Development computer | `C:\Users\m.diles\PycharmProjects\postal_report_automation` | Pulls source code, runs development tests, and builds the deployment files. |
+| Deployment computer (`RPA15`) | `C:\AutomationProcess\postal-report-automation` | Runs the production scheduled task and receives the built deployment files. |
+
+Commands under one computer's heading must be run on that computer. Building
+the ZIP on the development computer does not automatically place it on RPA15.
+
+### 1. Development computer: update and verify the tracked checkout
 
 On the development computer:
 
@@ -187,33 +197,55 @@ git pull --ff-only
 `git status --short` should be empty before the pull. The correct option is
 `--ff-only` with two hyphens; `--f-only` is not a Git option.
 
-### 2. Build the new deployment package
+### 2. Development computer: build the new deployment package
+
+Remain in this development directory:
+
+```text
+C:\Users\m.diles\PycharmProjects\postal_report_automation
+```
 
 ```powershell
 .\build_deployment.ps1
 ```
 
-This refreshes both files in the development checkout's `dist` directory:
+This refreshes both files only in the development computer's directory:
 
 ```text
-postal-report-automation-deployment.zip
-postal-report-automation-deployment.zip.sha256.txt
+C:\Users\m.diles\PycharmProjects\postal_report_automation\dist\postal-report-automation-deployment.zip
+C:\Users\m.diles\PycharmProjects\postal_report_automation\dist\postal-report-automation-deployment.zip.sha256.txt
 ```
 
-### 3. Transfer both deployment files
+Do not run `update_from_deployment.ps1` on the development computer. The next
+step is a file transfer from the development computer to RPA15.
 
-Copy both files into this directory on the deployment computer, replacing the
-older ZIP and checksum:
+### 3. Between computers: transfer both deployment files to RPA15
+
+Copy these two source files **from the development computer**:
+
+```text
+C:\Users\m.diles\PycharmProjects\postal_report_automation\dist\postal-report-automation-deployment.zip
+C:\Users\m.diles\PycharmProjects\postal_report_automation\dist\postal-report-automation-deployment.zip.sha256.txt
+```
+
+Place them **on the deployment computer (`RPA15`)** in this destination
+directory, replacing the older ZIP and checksum:
 
 ```text
 C:\AutomationProcess\postal-report-automation\dist
 ```
 
+This transfer can be performed through the approved shared folder, an RDP file
+transfer, or the organization's normal deployment method. Merely running
+`build_deployment.ps1` does not perform this cross-computer copy.
+
 Do not copy the development `.env`, `.venv`, downloads, or logs.
 
-### 4. Apply the verified update
+### 4. Deployment computer (RPA15): apply the verified update
 
-On the deployment computer, preferably outside the 07:05 run window:
+Open PowerShell on RPA15, preferably outside the 07:05 run window. The prompt
+should change to `PS C:\AutomationProcess\postal-report-automation>` before the
+updater is executed:
 
 ```powershell
 Set-Location "C:\AutomationProcess\postal-report-automation"
@@ -224,7 +256,7 @@ The updater verifies SHA-256, prevents updates during a running scheduled task,
 temporarily disables the task, preserves `.env` and `.venv`, installs
 dependencies, runs tests, and restores the task's enabled state.
 
-### 5. Add new private settings after this redeployment
+### 5. Deployment computer (RPA15): add new private settings
 
 Because updates deliberately preserve `.env`, add the new shared-log settings
 once on the deployment computer:
@@ -249,7 +281,7 @@ Confirm that the task account has create/append access. An interactive
 Test-Path "\\kronos.epa.aerioattikis.gr\EPA_Workspace\AutomationProcess\RPALogs"
 ```
 
-### 6. Verify the redeployment
+### 6. Deployment computer (RPA15): reinstall and verify the task
 
 For this retry-policy release, reinstall the existing task once. Older task
 definitions may contain Task Scheduler-level restart rules, which could start

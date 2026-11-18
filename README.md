@@ -852,12 +852,22 @@ Update an existing ZIP installation with:
 .\update_from_deployment.ps1
 ```
 
-For a redeployment, build a fresh ZIP and checksum in the tracked development
-checkout, copy both files into
-`C:\AutomationProcess\postal-report-automation\dist`, and run the updater from
-the production project root. The updater preserves the production `.env` and
-`.venv`. New settings are therefore added manually to `.env`; the complete
-numbered procedure is in [DEPLOYMENT_WINDOWS.md](DEPLOYMENT_WINDOWS.md).
+For a redeployment, the work is divided between two computers:
+
+1. On the **development computer**, use
+   `C:\Users\m.diles\PycharmProjects\postal_report_automation` to pull, test,
+   and build the ZIP and checksum.
+2. Transfer those two generated files from the development computer's `dist`
+   directory to the **deployment computer (`RPA15`)** at
+   `C:\AutomationProcess\postal-report-automation\dist`.
+3. Only then, open PowerShell on RPA15 and run
+   `C:\AutomationProcess\postal-report-automation\update_from_deployment.ps1`.
+
+The build command does not copy files between computers automatically. The
+updater preserves the production `.env` and `.venv`; new settings are therefore
+added manually to the deployment computer's `.env`. The complete numbered
+procedure, including full source and destination paths, is in
+[DEPLOYMENT_WINDOWS.md](DEPLOYMENT_WINDOWS.md).
 
 The ZIP builder uses an explicit allow-list and verifies that credentials,
 virtual environments, Git metadata, IDE settings, reports, logs, and caches are
