@@ -106,21 +106,55 @@ $automationExitCode = 1
 try {
     $utf8WithoutBom = [System.Text.UTF8Encoding]::new($false)
 
-    # Windows PowerShell 5.1 makes Tee-Object append file output as UTF-16.
-    # Appending that to the UTF-8 header inserts NUL bytes, which later appear
-    # as spaces between every letter. Write each displayed line explicitly as
-    # UTF-8 so the entire local and shared log has one consistent encoding.
-    & $pythonExecutable $mainScript --headless *>&1 |
-        ForEach-Object {
-            $outputLine = $_.ToString()
-            Write-Host $outputLine
-            [System.IO.File]::AppendAllText(
-                $logFile,
-                $outputLine + [Environment]::NewLine,
-                $utf8WithoutBom
-            )
+    # Run Python through System.Diagnostics instead of PowerShell's native
+    # stderr pipeline. With ErrorActionPreference=Stop, Windows PowerShell 5.1
+    # converts the first stderr line (normally "Traceback ...") into a
+    # terminating NativeCommandError and hides the useful remaining lines.
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $pythonExecutable
+    $startInfo.Arguments = ('"{0}" --headless' -f $mainScript)
+    $startInfo.WorkingDirectory = $projectDirectory
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $startInfo.StandardOutputEncoding = $utf8WithoutBom
+    $startInfo.StandardErrorEncoding = $utf8WithoutBom
+    $startInfo.EnvironmentVariables["PYTHONIOENCODING"] = "utf-8"
+    $startInfo.EnvironmentVariables["PYTHONUNBUFFERED"] = "1"
+
+    $pythonProcess = [System.Diagnostics.Process]::new()
+    $pythonProcess.StartInfo = $startInfo
+    if (-not $pythonProcess.Start()) {
+        throw "Python could not be started: $pythonExecutable"
+    }
+
+    # Read both redirected streams asynchronously so neither pipe can fill up
+    # and block a long traceback or verbose browser output.
+    $standardOutputTask = $pythonProcess.StandardOutput.ReadToEndAsync()
+    $standardErrorTask = $pythonProcess.StandardError.ReadToEndAsync()
+    $pythonProcess.WaitForExit()
+    $standardOutput = $standardOutputTask.Result
+    $standardError = $standardErrorTask.Result
+    $automationExitCode = $pythonProcess.ExitCode
+    $pythonProcess.Dispose()
+
+    # Windows PowerShell 5.1 uses UTF-16 for Tee-Object file output. Append the
+    # captured strings explicitly as UTF-8 to keep local and shared logs clean.
+    if (-not [string]::IsNullOrEmpty($standardOutput)) {
+        Write-Host $standardOutput.TrimEnd()
+        [System.IO.File]::AppendAllText($logFile, $standardOutput, $utf8WithoutBom)
+        if (-not $standardOutput.EndsWith([Environment]::NewLine)) {
+            [System.IO.File]::AppendAllText($logFile, [Environment]::NewLine, $utf8WithoutBom)
         }
-    $automationExitCode = $LASTEXITCODE
+    }
+    if (-not [string]::IsNullOrEmpty($standardError)) {
+        [Console]::Error.Write($standardError)
+        [System.IO.File]::AppendAllText($logFile, $standardError, $utf8WithoutBom)
+        if (-not $standardError.EndsWith([Environment]::NewLine)) {
+            [System.IO.File]::AppendAllText($logFile, [Environment]::NewLine, $utf8WithoutBom)
+        }
+    }
 }
 catch {
     $errorText = $_ | Out-String

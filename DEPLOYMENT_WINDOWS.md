@@ -254,6 +254,10 @@ displayed spaces between letters. New local and shared-log sections will be
 normal UTF-8 text. Previously appended malformed sections are historical data
 and are intentionally left unchanged.
 
+It also captures Python's complete standard-error stream. If the automation
+fails, the next local and shared log will contain the full traceback and the
+original Python exit code instead of stopping after `python.exe : Traceback`.
+
 Run a controlled scheduled-mode test, then inspect the local and shared logs:
 
 ```powershell
