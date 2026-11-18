@@ -30,6 +30,8 @@ POSTAL_COPY_TO_TALEND=true
 POSTAL_TALEND_TRIGGER_DIR=\\FILE-SRV01\epa_files\EpaSyn2\Talend_Triggers
 POSTAL_APPEND_NETWORK_LOG=true
 POSTAL_NETWORK_LOG_FILE=\\kronos.epa.aerioattikis.gr\EPA_Workspace\AutomationProcess\RPALogs\postal-report-automation-1001234.txt
+POSTAL_RETRY_DELAY_SECONDS=60
+POSTAL_ERROR_LOG_DIR=\\kronos.epa.aerioattikis.gr\EPA_Workspace\AutomationProcess\RPALogs
 ```
 
 Verify the environment:
@@ -139,6 +141,8 @@ POSTAL_COPY_TO_TALEND=false
 POSTAL_TALEND_TRIGGER_DIR=\\FILE-SRV01\epa_files\EpaSyn2\Talend_Triggers
 POSTAL_APPEND_NETWORK_LOG=true
 POSTAL_NETWORK_LOG_FILE=\\kronos.epa.aerioattikis.gr\EPA_Workspace\AutomationProcess\RPALogs\postal-report-automation-1001234.txt
+POSTAL_RETRY_DELAY_SECONDS=60
+POSTAL_ERROR_LOG_DIR=\\kronos.epa.aerioattikis.gr\EPA_Workspace\AutomationProcess\RPALogs
 ```
 
 Run the tests, dry run, and one visible local-download test:
@@ -234,6 +238,8 @@ Add or update:
 ```dotenv
 POSTAL_APPEND_NETWORK_LOG=true
 POSTAL_NETWORK_LOG_FILE=\\kronos.epa.aerioattikis.gr\EPA_Workspace\AutomationProcess\RPALogs\postal-report-automation-1001234.txt
+POSTAL_RETRY_DELAY_SECONDS=60
+POSTAL_ERROR_LOG_DIR=\\kronos.epa.aerioattikis.gr\EPA_Workspace\AutomationProcess\RPALogs
 ```
 
 Confirm that the task account has create/append access. An interactive
@@ -245,9 +251,18 @@ Test-Path "\\kronos.epa.aerioattikis.gr\EPA_Workspace\AutomationProcess\RPALogs"
 
 ### 6. Verify the redeployment
 
-The existing task does not need to be reinstalled because it already points to
-the same `run_scheduled.ps1` path. Reinstall it only if its account, time,
-project path, or task definition must change.
+For this retry-policy release, reinstall the existing task once. Older task
+definitions may contain Task Scheduler-level restart rules, which could start
+another wrapper after its own two attempts. The project now owns the single
+retry, so the task definition deliberately has no additional automatic restart:
+
+```powershell
+.\install_daily_task.ps1 -Force
+```
+
+Enter the Windows password for `EPA\rpasys` when prompted. Future application
+updates do not require reinstalling the task unless its account, time, path, or
+task settings change again.
 
 This version also corrects the mixed UTF-8/UTF-16 scheduled-log output that
 displayed spaces between letters. New local and shared-log sections will be
@@ -258,12 +273,19 @@ It also captures Python's complete standard-error stream. If the automation
 fails, the next local and shared log will contain the full traceback and the
 original Python exit code instead of stopping after `python.exe : Traceback`.
 
+On the first failed attempt, the wrapper now creates or appends
+`yyyyMMdd-error_postal-report-automation-1001234` in the configured `RPALogs`
+directory, waits 60 seconds by default, and retries the complete automation one
+time. A successful retry appends `Outcome: Recovered`; a second failure appends
+its own error block and leaves the task result nonzero.
+
 Run a controlled scheduled-mode test, then inspect the local and shared logs:
 
 ```powershell
 .\run_scheduled.ps1
 Get-ChildItem .\logs | Sort-Object LastWriteTime -Descending | Select-Object -First 3
 Get-Content "\\kronos.epa.aerioattikis.gr\EPA_Workspace\AutomationProcess\RPALogs\postal-report-automation-1001234.txt" -Tail 40
+Get-ChildItem "\\kronos.epa.aerioattikis.gr\EPA_Workspace\AutomationProcess\RPALogs" -Filter "*-error_postal-report-automation-1001234"
 Get-ScheduledTaskInfo -TaskName "Postal Report Automation"
 ```
 

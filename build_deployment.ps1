@@ -39,7 +39,8 @@ $rootFiles = @(
     "run_now.ps1",
     "run_scheduled.ps1",
     "setup.ps1",
-    "update_from_deployment.ps1"
+    "update_from_deployment.ps1",
+    "write_error_report.ps1"
 )
 $sourceDirectories = @("tests")
 

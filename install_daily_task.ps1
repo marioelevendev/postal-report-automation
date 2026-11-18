@@ -124,8 +124,6 @@ $settingsParameters = @{
     StartWhenAvailable         = $true
     MultipleInstances          = "IgnoreNew"
     ExecutionTimeLimit         = (New-TimeSpan -Minutes 30)
-    RestartCount               = 3
-    RestartInterval            = (New-TimeSpan -Minutes 5)
     AllowStartIfOnBatteries    = $true
     DontStopIfGoingOnBatteries = $true
 }
@@ -184,4 +182,3 @@ Write-Host ""
 Write-Host "Test it now with:"
 Write-Host "  Start-ScheduledTask -TaskName '$TaskName'"
 Write-Host "Then inspect logs and the enabled Talend destination."
-

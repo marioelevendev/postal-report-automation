@@ -26,6 +26,8 @@ The project is also available on
 10. Opens the user menu and confirms **Logout**.
 11. During a scheduled run, keeps a timestamped local log and appends the same
     run output to the shared RPA log file.
+12. If the scheduled automation fails, writes a dated error file and retries
+    the complete browser workflow exactly once.
 
 ## Date rule
 
@@ -175,6 +177,8 @@ POSTAL_COPY_TO_TALEND=true
 POSTAL_TALEND_TRIGGER_DIR=\\FILE-SRV01\epa_files\EpaSyn2\Talend_Triggers
 POSTAL_APPEND_NETWORK_LOG=true
 POSTAL_NETWORK_LOG_FILE=\\kronos.epa.aerioattikis.gr\EPA_Workspace\AutomationProcess\RPALogs\postal-report-automation-1001234.txt
+POSTAL_RETRY_DELAY_SECONDS=60
+POSTAL_ERROR_LOG_DIR=\\kronos.epa.aerioattikis.gr\EPA_Workspace\AutomationProcess\RPALogs
 ```
 
 Save and close Notepad. Never copy the completed `.env` into GitHub.
@@ -288,6 +292,7 @@ run while the user is logged out and still access the UNC share.
 | `run_now.ps1` | Runs the automation immediately. |
 | `run_scheduled.ps1` | Runs headlessly, saves a local log, and publishes it to the shared append-only log. |
 | `append_network_log.ps1` | Appends a completed run to the shared log with retries. |
+| `write_error_report.ps1` | Creates or appends the dated error file after a failed automation attempt. |
 | `install_daily_task.ps1` | Optionally creates a Windows Scheduled Task. |
 | `build_deployment.ps1` | Builds a secret-free deployment ZIP and SHA-256 file. |
 | `update_from_deployment.ps1` | Safely updates an existing ZIP installation. |
@@ -470,6 +475,8 @@ POSTAL_COPY_TO_TALEND=true
 POSTAL_TALEND_TRIGGER_DIR=\\FILE-SRV01\epa_files\EpaSyn2\Talend_Triggers
 POSTAL_APPEND_NETWORK_LOG=true
 POSTAL_NETWORK_LOG_FILE=\\kronos.epa.aerioattikis.gr\EPA_Workspace\AutomationProcess\RPALogs\postal-report-automation-1001234.txt
+POSTAL_RETRY_DELAY_SECONDS=60
+POSTAL_ERROR_LOG_DIR=\\kronos.epa.aerioattikis.gr\EPA_Workspace\AutomationProcess\RPALogs
 ```
 
 Available settings:
@@ -485,6 +492,8 @@ Available settings:
 | `POSTAL_LOG_DIR` | Optional custom directory for copy and scheduled-run logs. |
 | `POSTAL_APPEND_NETWORK_LOG` | `true` appends each scheduled run to the shared RPA log; `false` keeps only the local scheduled-run log. |
 | `POSTAL_NETWORK_LOG_FILE` | Full UNC filename of the append-only shared RPA log. |
+| `POSTAL_RETRY_DELAY_SECONDS` | Delay before the single complete retry; defaults to `60` seconds and accepts `0`–`3600`. |
+| `POSTAL_ERROR_LOG_DIR` | Directory for the dated error file; defaults to the shared RPA log directory. |
 | `POSTAL_REFERENCE_DATE` | Optional testing override in `YYYY-MM-DD` format. Normally leave empty. |
 
 Security notes:
@@ -577,6 +586,28 @@ Test-Path "\\kronos.epa.aerioattikis.gr\EPA_Workspace\AutomationProcess\RPALogs"
 
 Expected output is `True`. Do not use a mapped drive letter for this setting.
 
+### Automatic retry and dated error file
+
+If the first scheduled automation attempt returns a nonzero exit code,
+`run_scheduled.ps1` performs the following actions:
+
+1. Keeps the full stdout, stderr, traceback, and exit code in the local log.
+2. Creates or appends this UTF-8 text file in `POSTAL_ERROR_LOG_DIR`:
+   `yyyyMMdd-error_postal-report-automation-1001234`
+3. Waits `POSTAL_RETRY_DELAY_SECONDS` seconds.
+4. Starts the complete browser automation once more in a fresh Python process.
+
+The filename intentionally has no extension, matching the requested name. If
+more than one failure occurs on the same date, each error is appended to the
+same daily file without overwriting earlier details. The record includes the
+machine, Windows account, attempt number, exit code, local log path, and full
+error text. If attempt two succeeds, the file receives an `Outcome: Recovered`
+entry. If attempt two also fails, the scheduled run returns its nonzero exit
+code after recording both attempts.
+
+The retry belongs to the project wrapper rather than Task Scheduler. This
+guarantees at most two automation attempts for one scheduled start.
+
 For an on-demand run without showing Chrome:
 
 ```powershell
@@ -631,6 +662,8 @@ Important:
 - Scheduled runs use headless mode and write diagnostic output to `logs`.
 - Scheduled runs append the same output to the configured shared RPA log when
   `POSTAL_APPEND_NETWORK_LOG=true`.
+- A failed first attempt creates the dated error file and retries the complete
+  automation once after the configured delay.
 - The password-backed task can run while the user is logged out and can access
   both configured UNC shares.
 
@@ -771,7 +804,7 @@ python -m unittest discover -s tests -v
 Expected final output:
 
 ```text
-Ran 8 tests in ...
+Ran 9 tests in ...
 
 OK
 ```
@@ -800,6 +833,7 @@ date, delivery, and configuration tests passed.
 | The shared RPA log is not updated | Inspect the newest timestamped file in `logs`, run `Test-Path "\\kronos.epa.aerioattikis.gr\EPA_Workspace\AutomationProcess\RPALogs"` as the scheduled-task account, and verify create/append share and NTFS permissions. |
 | Letters in an older shared-log section have spaces between them | That section was written by an earlier mixed UTF-8/UTF-16 version. Redeploy the current version; new sections are UTF-8. Existing historical text is not modified automatically. |
 | A scheduled failure shows only `python.exe : Traceback` | Redeploy the current version. It captures Python stdout and stderr outside PowerShell's terminating native-error pipeline, preserving the complete traceback and original exit code. |
+| More than two automation attempts occur after one scheduled start | Reinstall the task with `.\install_daily_task.ps1 -Force`; older task settings may still contain Task Scheduler-level restart rules. The current project handles exactly one retry itself. |
 
 ## Deployment files
 
